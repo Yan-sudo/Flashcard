@@ -386,15 +386,15 @@ INDEX_HTML = r"""<!DOCTYPE html>
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
       <h3>Image Search</h3>
       <p class="hint" style="margin-bottom:16px;">
-        Configure at least one image source below. <strong>Pexels</strong> is recommended (free, high-quality photos, easy signup).<br>
+        Configure at least one image source below. <strong>Pixabay</strong> is recommended (free, high-quality photos, easy signup).<br>
         Google Custom Search is also supported but requires more setup.
       </p>
 
       <div class="form-group">
-        <label>Pexels API Key <span style="color:var(--text-muted)">(recommended, free)</span></label>
-        <input type="password" id="cfg-pexels-key" placeholder="e.g. 563492ad6f917000010000...">
+        <label>Pixabay API Key <span style="color:var(--text-muted)">(recommended, free)</span></label>
+        <input type="password" id="cfg-pixabay-key" placeholder="e.g. 12345678-abcdef...">
         <p class="hint">
-          Get a free key at <a href="https://www.pexels.com/api/" target="_blank">pexels.com/api</a> — sign up, then copy the API key from your dashboard. No credit card needed.
+          Get a free key at <a href="https://pixabay.com/api/docs/" target="_blank">pixabay.com/api/docs</a> — sign up, then copy the API key shown at the top. No credit card needed.
         </p>
       </div>
 
@@ -433,11 +433,11 @@ INDEX_HTML = r"""<!DOCTYPE html>
           <li>Copy the key and paste it in the Settings tab above</li>
         </ol>
 
-        <p><strong>Step 3: Setup Image Search (Pexels — recommended, free)</strong></p>
+        <p><strong>Step 3: Setup Image Search (Pixabay — recommended, free)</strong></p>
         <ol style="padding-left:20px;margin:8px 0 16px">
-          <li>Go to <a href="https://www.pexels.com/api/" target="_blank">pexels.com/api</a></li>
-          <li>Click <strong>"Get Started"</strong> and sign up (free, no credit card)</li>
-          <li>After signing in, go to <strong>"Your API Key"</strong> in your dashboard</li>
+          <li>Go to <a href="https://pixabay.com/api/docs/" target="_blank">pixabay.com/api/docs</a></li>
+          <li>Click <strong>"Sign up"</strong> and create an account (free, no credit card)</li>
+          <li>After signing in, your API key is shown at the top of the API docs page</li>
           <li>Copy the API key and paste it in Settings above</li>
         </ol>
 
@@ -522,13 +522,13 @@ dropZone.addEventListener('drop', (e) => {
 // --- Settings ---
 function loadSettings() {
   document.getElementById('cfg-gemini-key').value = localStorage.getItem('gemini_key') || '';
-  document.getElementById('cfg-pexels-key').value = localStorage.getItem('pexels_key') || '';
+  document.getElementById('cfg-pixabay-key').value = localStorage.getItem('pixabay_key') || '';
   document.getElementById('cfg-cse-key').value = localStorage.getItem('cse_key') || '';
   document.getElementById('cfg-cse-cx').value = localStorage.getItem('cse_cx') || '';
 }
 function saveSettings() {
   localStorage.setItem('gemini_key', document.getElementById('cfg-gemini-key').value.trim());
-  localStorage.setItem('pexels_key', document.getElementById('cfg-pexels-key').value.trim());
+  localStorage.setItem('pixabay_key', document.getElementById('cfg-pixabay-key').value.trim());
   localStorage.setItem('cse_key', document.getElementById('cfg-cse-key').value.trim());
   localStorage.setItem('cse_cx', document.getElementById('cfg-cse-cx').value.trim());
   showToast('Settings saved!');
@@ -565,7 +565,7 @@ async function startGenerate() {
   const formData = new FormData();
   formData.append('pdf', pdfInput.files[0]);
   formData.append('gemini_key', geminiKey);
-  formData.append('pexels_key', localStorage.getItem('pexels_key') || '');
+  formData.append('pixabay_key', localStorage.getItem('pixabay_key') || '');
   formData.append('cse_key', localStorage.getItem('cse_key') || '');
   formData.append('cse_cx', localStorage.getItem('cse_cx') || '');
   formData.append('word_count', document.getElementById('word-count').value);
@@ -755,7 +755,7 @@ def api_generate():
     # Collect settings from form
     settings = {
         "gemini_key": gemini_key,
-        "pexels_key": request.form.get("pexels_key", "").strip(),
+        "pixabay_key": request.form.get("pixabay_key", "").strip(),
         "cse_key": request.form.get("cse_key", "").strip(),
         "cse_cx": request.form.get("cse_cx", "").strip(),
         "word_count": int(request.form.get("word_count", 30)),
@@ -845,7 +845,7 @@ def _run_job(job_id: str, pdf_path: str, settings: dict):
             GEMINI_API_KEY=settings["gemini_key"],
             GEMINI_MODEL=settings["model"],
             TARGET_WORD_COUNT=settings["word_count"],
-            PEXELS_API_KEY=settings.get("pexels_key", ""),
+            PIXABAY_API_KEY=settings.get("pixabay_key", ""),
             GOOGLE_CSE_API_KEY=settings.get("cse_key", ""),
             GOOGLE_CSE_CX=settings.get("cse_cx", ""),
         )

@@ -2,7 +2,7 @@
 
 Image sources (tried in order):
 1. Google Custom Search API (optional, requires CSE_API_KEY + CSE_CX)
-2. Pexels API (free key at https://www.pexels.com/api/)
+2. Pixabay API (free key at https://pixabay.com/api/docs/)
 3. Placeholder image (fallback)
 """
 
@@ -55,35 +55,41 @@ def _search_google_image(query: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Source 2: Pexels API (free key at https://www.pexels.com/api/)
+# Source 2: Pixabay API (free key at https://pixabay.com/api/docs/)
 # ---------------------------------------------------------------------------
 
-def _search_pexels_image(query: str) -> str | None:
-    """Search Pexels for an image. Requires a free API key."""
-    api_key = config.PEXELS_API_KEY
+def _search_pixabay_image(query: str) -> str | None:
+    """Search Pixabay for an image. Requires a free API key."""
+    api_key = config.PIXABAY_API_KEY
     if not api_key:
         return None
 
     try:
         resp = requests.get(
-            "https://api.pexels.com/v1/search",
-            params={"query": query, "per_page": 1, "size": "small"},
-            headers={"Authorization": api_key},
+            "https://pixabay.com/api/",
+            params={
+                "key": api_key,
+                "q": query,
+                "image_type": "photo",
+                "per_page": 3,
+                "safesearch": "true",
+                "lang": "en",
+            },
             timeout=15,
         )
         if resp.status_code == 401:
-            print("    [Pexels error] Invalid API key")
+            print("    [Pixabay error] Invalid API key")
             return None
         if resp.status_code != 200:
-            print(f"    [Pexels error] {resp.status_code}: {resp.text[:200]}")
+            print(f"    [Pixabay error] {resp.status_code}: {resp.text[:200]}")
             return None
         data = resp.json()
-        photos = data.get("photos", [])
-        if photos:
-            # Use the "medium" size (350px wide, good for flashcards)
-            return photos[0]["src"]["medium"]
+        hits = data.get("hits", [])
+        if hits:
+            # webformatURL is 640px wide — good quality for flashcards
+            return hits[0].get("webformatURL")
     except Exception as e:
-        print(f"    [Pexels exception] {e}")
+        print(f"    [Pixabay exception] {e}")
     return None
 
 
@@ -174,8 +180,8 @@ def fetch_image(word: str, index: int) -> str:
         if url and _download_image(url, path):
             return path
 
-    # Try Pexels (if API key configured)
-    url = _search_pexels_image(word)
+    # Try Pixabay (if API key configured)
+    url = _search_pixabay_image(word)
     if url and _download_image(url, path):
         return path
 

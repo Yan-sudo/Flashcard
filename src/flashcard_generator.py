@@ -237,7 +237,7 @@ def _generate_pdf_reportlab(words: list[dict], images: dict[str, str],
 
 def _draw_card(c, word_data: dict, image_path: str,
                x: float, y_top: float, card_w: float, card_h: float):
-    """Draw one flashcard with proper layout, CJK support, no overlap."""
+    """Draw one flashcard: text on left, large image on right filling card height."""
     from reportlab.lib.colors import HexColor
     from reportlab.lib.utils import ImageReader
 
@@ -248,11 +248,8 @@ def _draw_card(c, word_data: dict, image_path: str,
     eng_def = _truncate(word_data.get("english_definition", ""), 180)
     example = _truncate(word_data.get("example_sentence", ""), 180)
 
-    pad = 16
-    inner_x = x + pad
-    inner_w = card_w - 2 * pad
+    pad = 14
     card_bottom = y_top - card_h
-    y = y_top  # cursor moves downward
 
     # ── Card background ──
     bg = HexColor("#E8F4FD") if tier == 2 else HexColor("#FFF8E1")
@@ -262,24 +259,30 @@ def _draw_card(c, word_data: dict, image_path: str,
     c.setLineWidth(1.5)
     c.roundRect(x, card_bottom, card_w, card_h, 8, fill=1, stroke=1)
 
-    # ── Image (top-right) ──
-    img_w, img_h = 110, 82
-    img_x = x + card_w - pad - img_w
-    img_y = y_top - pad - img_h
+    # ── Image (right side, nearly full card height) ──
+    img_pad = 10
+    img_area_w = 180  # width reserved for image column
+    img_area_h = card_h - 2 * img_pad  # nearly top-to-bottom
+    img_x = x + card_w - img_pad - img_area_w
+    img_y = card_bottom + img_pad
     has_image = False
+
     if image_path and os.path.exists(image_path):
         try:
             c.drawImage(ImageReader(image_path), img_x, img_y,
-                        width=img_w, height=img_h,
+                        width=img_area_w, height=img_area_h,
                         preserveAspectRatio=True, mask='auto')
             c.setStrokeColor(HexColor("#CCCCCC"))
             c.setLineWidth(0.5)
-            c.rect(img_x, img_y, img_w, img_h, fill=0, stroke=1)
+            c.rect(img_x, img_y, img_area_w, img_area_h, fill=0, stroke=1)
             has_image = True
         except Exception as e:
             print(f"    [warn] Image render failed for '{word}': {e}")
 
-    top_text_w = inner_w - (img_w + 14 if has_image else 0)
+    # Text column: left side, stops before image
+    inner_x = x + pad
+    text_w = card_w - 2 * pad - (img_area_w + img_pad + 6 if has_image else 0)
+    y = y_top  # cursor moves downward
 
     # ── Tier badge ──
     y -= pad
@@ -289,7 +292,7 @@ def _draw_card(c, word_data: dict, image_path: str,
     c.setFillColor(HexColor("#FFFFFF"))
     c.setFont(_LATIN_FONT_BOLD, 10)
     c.drawString(inner_x + 9, y - 13, f"Tier {tier}")
-    y -= 28
+    y -= 26
 
     # ── Word ──
     c.setFillColor(HexColor("#0D47A1"))
@@ -300,34 +303,30 @@ def _draw_card(c, word_data: dict, image_path: str,
     # ── Chinese ──
     cn_label = "中文翻译: " if tier == 2 else "中文释义: "
     cn_markup = _make_para_text(chinese, bold_prefix=cn_label)
-    h = _draw_para(c, cn_markup, inner_x, y, top_text_w,
+    h = _draw_para(c, cn_markup, inner_x, y, text_w,
                    font_name=_font_for(cn_label + chinese),
                    font_size=10, leading=15, color="#333333")
-    y -= h + 8
+    y -= h + 6
 
     # ── Spanish ──
     es_label = "Español: " if tier == 2 else "Definición (ES): "
     es_markup = _make_para_text(spanish, bold_prefix=es_label)
-    h = _draw_para(c, es_markup, inner_x, y, top_text_w,
+    h = _draw_para(c, es_markup, inner_x, y, text_w,
                    font_name=_font_for(es_label + spanish),
                    font_size=10, leading=15, color="#333333")
-    y -= h + 10
-
-    # ── Ensure we're below the image before full-width content ──
-    if has_image and y > img_y - 6:
-        y = img_y - 6
-
-    # ── English definition (full width) ──
-    def_markup = _make_para_text(eng_def, bold_prefix="Definition: ")
-    h = _draw_para(c, def_markup, inner_x, y, inner_w,
-                   font_name=_LATIN_FONT, font_size=10,
-                   leading=15, color="#333333")
     y -= h + 8
 
-    # ── Example sentence (full width) ──
-    if y > card_bottom + pad + 14:  # only draw if there's room
+    # ── English definition ──
+    def_markup = _make_para_text(eng_def, bold_prefix="Definition: ")
+    h = _draw_para(c, def_markup, inner_x, y, text_w,
+                   font_name=_LATIN_FONT, font_size=10,
+                   leading=15, color="#333333")
+    y -= h + 6
+
+    # ── Example sentence ──
+    if y > card_bottom + pad + 14:
         ex_markup = f"<i>{_make_para_text(example, bold_prefix='Example: ')}</i>"
-        _draw_para(c, ex_markup, inner_x, y, inner_w,
+        _draw_para(c, ex_markup, inner_x, y, text_w,
                    font_name=_LATIN_FONT, font_size=9.5,
                    leading=14, color="#666666")
 
@@ -377,12 +376,10 @@ def _generate_html_fallback(words: list[dict], images: dict[str, str],
       <div class="word">{word}</div>
       <div class="line"><span class="label">{cn_label}:</span> {chinese}</div>
       <div class="line"><span class="label">{es_label}:</span> {spanish}</div>
+      <div class="line"><span class="label">Definition:</span> {eng_def}</div>
+      <div class="line example"><span class="label">Example:</span> <em>{example}</em></div>
     </div>
     <div class="img-col">{img_tag}</div>
-  </div>
-  <div class="bottom-section">
-    <div class="line"><span class="label">Definition:</span> {eng_def}</div>
-    <div class="line example"><span class="label">Example:</span> <em>{example}</em></div>
   </div>
 </div>''')
 
@@ -410,14 +407,14 @@ def _generate_html_fallback(words: list[dict], images: dict[str, str],
     background: #E8F4FD; display: flex; flex-direction: column;
   }}
   .card.t3 {{ border-color: #F57C00; background: #FFF8E1; }}
-  .top-row {{ display: flex; gap: 14px; margin-bottom: 10px; }}
+  .top-row {{ display: flex; gap: 14px; flex: 1; min-height: 0; }}
   .text-col {{ flex: 1; min-width: 0; }}
   .img-col {{
-    width: 130px; flex-shrink: 0;
-    display: flex; align-items: flex-start; justify-content: center;
+    width: 200px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
   }}
   .img-col img {{
-    max-width: 125px; max-height: 95px; border-radius: 6px;
+    max-width: 190px; max-height: 100%; border-radius: 6px;
     border: 1px solid #bbb; object-fit: contain; background: #fff;
   }}
   .badge {{
@@ -433,10 +430,6 @@ def _generate_html_fallback(words: list[dict], images: dict[str, str],
   .line {{ font-size: 13px; margin-bottom: 6px; line-height: 1.6; }}
   .label {{ font-weight: 700; }}
   .example {{ color: #555; }}
-  .bottom-section {{
-    border-top: 1px solid rgba(0,0,0,0.08);
-    padding-top: 8px; flex: 1;
-  }}
   @media print {{
     body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
     .card {{ break-inside: avoid; page-break-inside: avoid; }}

@@ -14,8 +14,8 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com"
 GOOGLE_CSE_API_KEY = os.environ.get("GOOGLE_CSE_API_KEY", "")
 GOOGLE_CSE_CX = os.environ.get("GOOGLE_CSE_CX", "")
 
-# Pexels API (for images — free key at https://www.pexels.com/api/)
-PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
+# Pixabay API (for images — free key at https://pixabay.com/api/docs/)
+PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY", "")
 
 # Vocabulary extraction settings
 TARGET_WORD_COUNT = 30
