@@ -103,17 +103,64 @@ Return ONLY the JSON array, no markdown fences, no extra text."""
     raw = _generate_content(contents, temperature=0.3)
     _log("Gemini response received. Parsing vocabulary...")
 
-    # Clean up response — strip markdown fences if present
-    text = raw.strip()
-    if text.startswith("```"):
-        first_newline = text.index("\n")
-        text = text[first_newline + 1:]
-    if text.endswith("```"):
-        text = text[:-3].rstrip()
-
-    words = json.loads(text)
-    if not isinstance(words, list):
-        raise RuntimeError(f"Expected JSON array from Gemini, got: {type(words)}")
-
+    words = _parse_json_response(raw)
     _log(f"Extracted {len(words)} vocabulary words.")
     return words
+
+
+def _parse_json_response(raw: str) -> list[dict]:
+    """Parse Gemini's response into a JSON list, tolerating common quirks."""
+    import re
+
+    text = raw.strip()
+
+    # Strip markdown fences:  ```json ... ```
+    m = re.search(r"```(?:json)?\s*\n([\s\S]*?)\n\s*```", text)
+    if m:
+        text = m.group(1).strip()
+    elif text.startswith("```"):
+        first_nl = text.index("\n")
+        text = text[first_nl + 1:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+    # Try standard parse first
+    try:
+        result = json.loads(text)
+        if isinstance(result, list):
+            return result
+    except json.JSONDecodeError:
+        pass
+
+    # Fix common issues: trailing commas, single quotes, unquoted keys
+    fixed = text
+    # Remove trailing commas before ] or }
+    fixed = re.sub(r",\s*([}\]])", r"\1", fixed)
+    # Replace single-quoted strings with double-quoted (simple heuristic)
+    # Only if there are no double quotes at all or parse still fails
+    try:
+        result = json.loads(fixed)
+        if isinstance(result, list):
+            return result
+    except json.JSONDecodeError:
+        pass
+
+    # Last resort: extract the JSON array substring
+    start = fixed.find("[")
+    end = fixed.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        substr = fixed[start:end + 1]
+        # Remove trailing commas again
+        substr = re.sub(r",\s*([}\]])", r"\1", substr)
+        try:
+            result = json.loads(substr)
+            if isinstance(result, list):
+                return result
+        except json.JSONDecodeError:
+            pass
+
+    raise RuntimeError(
+        f"Failed to parse Gemini response as JSON array. "
+        f"First 500 chars: {text[:500]}"
+    )
