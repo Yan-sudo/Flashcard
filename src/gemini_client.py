@@ -6,19 +6,18 @@ Uses the Gemini REST API directly via the `requests` library.
 
 import base64
 import json
-import time
 import requests
 
-from src.config import GEMINI_API_KEY, GEMINI_MODEL, GEMINI_BASE_URL, TARGET_WORD_COUNT
+import src.config as config
 
 
 def _api_url(path: str) -> str:
-    return f"{GEMINI_BASE_URL}{path}?key={GEMINI_API_KEY}"
+    return f"{config.GEMINI_BASE_URL}{path}?key={config.GEMINI_API_KEY}"
 
 
 def _generate_content(contents: list, temperature: float = 0.3) -> str:
     """Call Gemini generateContent endpoint and return the text response."""
-    url = _api_url(f"/v1beta/models/{GEMINI_MODEL}:generateContent")
+    url = _api_url(f"/v1beta/models/{config.GEMINI_MODEL}:generateContent")
     payload = {
         "contents": contents,
         "generationConfig": {
@@ -26,7 +25,7 @@ def _generate_content(contents: list, temperature: float = 0.3) -> str:
             "maxOutputTokens": 8192,
         },
     }
-    resp = requests.post(url, json=payload, timeout=120)
+    resp = requests.post(url, json=payload, timeout=180)
     resp.raise_for_status()
     data = resp.json()
     candidates = data.get("candidates", [])
@@ -35,24 +34,29 @@ def _generate_content(contents: list, temperature: float = 0.3) -> str:
     return candidates[0]["content"]["parts"][0]["text"]
 
 
-def extract_vocabulary(pdf_path: str) -> list[dict]:
+def extract_vocabulary(pdf_path: str, on_progress=None) -> list[dict]:
     """Upload a PDF to Gemini and extract ~30 Tier 2/Tier 3 vocabulary words.
 
-    Returns a list of dicts, each with keys:
-        - word: str
-        - tier: 2 or 3
-        - chinese_translation: str (Tier 2) or chinese_definition: str (Tier 3)
-        - spanish_translation: str (Tier 2) or spanish_definition: str (Tier 3)
-        - english_definition: str
-        - example_sentence: str
+    Args:
+        pdf_path: Path to the PDF file.
+        on_progress: Optional callback(message: str) for progress updates.
+
+    Returns a list of dicts with keys:
+        word, tier, chinese, spanish, english_definition, example_sentence
     """
+    def _log(msg):
+        if on_progress:
+            on_progress(msg)
+
     with open(pdf_path, "rb") as f:
         pdf_bytes = f.read()
     pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
 
+    _log(f"Sending PDF to Gemini ({config.GEMINI_MODEL})...")
+
     prompt = f"""You are an expert ESL/ELA vocabulary specialist aligned with the New York State Next Generation English Language Arts Learning Standards for Grade 5.
 
-Analyze the attached PDF article and extract approximately {TARGET_WORD_COUNT} challenging vocabulary words that a 5th-grade student would need to learn. Follow these guidelines:
+Analyze the attached PDF article and extract approximately {config.TARGET_WORD_COUNT} challenging vocabulary words that a 5th-grade student would need to learn. Follow these guidelines:
 
 **Tier Classification (per NY NextGen ELA Standards & Beck et al.):**
 - **Tier 2 (Academic / High-Utility Words):** High-frequency academic words used across multiple content areas. These are words like "analyze", "evidence", "significant", "contrast", "establish", etc. They appear in academic texts across subjects but are not part of everyday conversational vocabulary for 5th graders.
@@ -96,13 +100,12 @@ Return ONLY the JSON array, no markdown fences, no extra text."""
         }
     ]
 
-    print(f"  Sending PDF to Gemini ({GEMINI_MODEL}) for vocabulary extraction...")
     raw = _generate_content(contents, temperature=0.3)
+    _log("Gemini response received. Parsing vocabulary...")
 
     # Clean up response — strip markdown fences if present
     text = raw.strip()
     if text.startswith("```"):
-        # Remove opening fence
         first_newline = text.index("\n")
         text = text[first_newline + 1:]
     if text.endswith("```"):
@@ -112,5 +115,5 @@ Return ONLY the JSON array, no markdown fences, no extra text."""
     if not isinstance(words, list):
         raise RuntimeError(f"Expected JSON array from Gemini, got: {type(words)}")
 
-    print(f"  Extracted {len(words)} vocabulary words.")
+    _log(f"Extracted {len(words)} vocabulary words.")
     return words

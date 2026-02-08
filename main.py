@@ -54,14 +54,14 @@ def main():
         print(f"Error: PDF file not found: {args.pdf}")
         sys.exit(1)
 
-    from src.config import GEMINI_API_KEY, OUTPUT_DIR
-    if not GEMINI_API_KEY:
+    import src.config as cfg
+    if not cfg.GEMINI_API_KEY:
         print("Error: GEMINI_API_KEY environment variable is not set.")
         print("  Get your key at: https://aistudio.google.com/apikey")
         print("  Then run: export GEMINI_API_KEY='your-key-here'")
         sys.exit(1)
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
 
     # Step 1: Extract vocabulary using Gemini
     print("\n[Step 1/3] Extracting vocabulary from PDF...")

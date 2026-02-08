@@ -15,20 +15,20 @@ Falls back to HTML output if ReportLab is not installed.
 import os
 import textwrap
 
-from src.config import OUTPUT_DIR, PAGE_WIDTH, PAGE_HEIGHT, CARD_MARGIN, CARD_GAP
+import src.config as config
 
 
 def _card_height():
     """Height of each card (2 per page with margins and gap)."""
-    usable = PAGE_HEIGHT - 2 * CARD_MARGIN - CARD_GAP
+    usable = config.PAGE_HEIGHT - 2 * config.CARD_MARGIN - config.CARD_GAP
     return usable / 2
 
 
 def generate_pdf(words: list[dict], images: dict[str, str], output_path: str | None = None) -> str:
     """Generate flashcard PDF. Returns path to the generated file."""
     if output_path is None:
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
-        output_path = os.path.join(OUTPUT_DIR, "flashcards.pdf")
+        os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+        output_path = os.path.join(config.OUTPUT_DIR, "flashcards.pdf")
 
     try:
         return _generate_pdf_reportlab(words, images, output_path)
@@ -58,7 +58,7 @@ def _generate_pdf_reportlab(words: list[dict], images: dict[str, str], output_pa
     c.setTitle("Vocabulary Flashcards")
 
     card_h = _card_height()
-    card_w = PAGE_WIDTH - 2 * CARD_MARGIN
+    card_w = config.PAGE_WIDTH - 2 * config.CARD_MARGIN
 
     for i, w in enumerate(words):
         slot = i % 2  # 0 = top card, 1 = bottom card
@@ -66,13 +66,12 @@ def _generate_pdf_reportlab(words: list[dict], images: dict[str, str], output_pa
         if slot == 0 and i > 0:
             c.showPage()
 
-        # Y origin for this card (top card starts higher)
         if slot == 0:
-            y_base = PAGE_HEIGHT - CARD_MARGIN
+            y_base = config.PAGE_HEIGHT - config.CARD_MARGIN
         else:
-            y_base = PAGE_HEIGHT - CARD_MARGIN - card_h - CARD_GAP
+            y_base = config.PAGE_HEIGHT - config.CARD_MARGIN - card_h - config.CARD_GAP
 
-        _draw_card(c, w, images.get(w["word"], ""), CARD_MARGIN, y_base, card_w, card_h)
+        _draw_card(c, w, images.get(w["word"], ""), config.CARD_MARGIN, y_base, card_w, card_h)
 
     # If odd number of words, finalize last page
     c.save()
