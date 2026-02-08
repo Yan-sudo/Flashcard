@@ -384,23 +384,21 @@ INDEX_HTML = r"""<!DOCTYPE html>
       </div>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
-      <h3>Image Search (Optional)</h3>
+      <h3>Image Search</h3>
       <p class="hint" style="margin-bottom:16px;">
-        For real images on flashcards. Without this, colored placeholder images are used.
+        Images are automatically fetched from <strong>Wikimedia Commons</strong> (free, no key needed).<br>
+        Optionally, you can also configure Google Custom Search for more image variety.
       </p>
 
       <div class="form-group">
-        <label>Google Custom Search API Key</label>
+        <label>Google Custom Search API Key <span style="color:var(--text-muted)">(optional)</span></label>
         <input type="password" id="cfg-cse-key" placeholder="AIzaSy...">
       </div>
       <div class="form-group">
-        <label>Search Engine ID (cx)</label>
+        <label>Search Engine ID (cx) <span style="color:var(--text-muted)">(optional)</span></label>
         <input type="text" id="cfg-cse-cx" placeholder="e.g. a1b2c3d4e5f6g7h8i">
         <p class="hint">
-          Setup guide:
-          <a href="https://developers.google.com/custom-search/v1/overview" target="_blank">
-            developers.google.com/custom-search
-          </a>
+          If left blank, Wikimedia Commons will be used automatically.
         </p>
       </div>
 
