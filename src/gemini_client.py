@@ -22,7 +22,7 @@ def _generate_content(contents: list, temperature: float = 0.3) -> str:
         "contents": contents,
         "generationConfig": {
             "temperature": temperature,
-            "maxOutputTokens": 8192,
+            "maxOutputTokens": 65536,
         },
     }
     resp = requests.post(url, json=payload, timeout=180)
@@ -109,7 +109,10 @@ Return ONLY the JSON array, no markdown fences, no extra text."""
 
 
 def _parse_json_response(raw: str) -> list[dict]:
-    """Parse Gemini's response into a JSON list, tolerating common quirks."""
+    """Parse Gemini's response into a JSON list, tolerating common quirks.
+
+    Handles: markdown fences, trailing commas, truncated output.
+    """
     import re
 
     text = raw.strip()
@@ -125,40 +128,42 @@ def _parse_json_response(raw: str) -> list[dict]:
             text = text[:-3]
         text = text.strip()
 
-    # Try standard parse first
-    try:
-        result = json.loads(text)
-        if isinstance(result, list):
-            return result
-    except json.JSONDecodeError:
-        pass
-
-    # Fix common issues: trailing commas, single quotes, unquoted keys
-    fixed = text
-    # Remove trailing commas before ] or }
-    fixed = re.sub(r",\s*([}\]])", r"\1", fixed)
-    # Replace single-quoted strings with double-quoted (simple heuristic)
-    # Only if there are no double quotes at all or parse still fails
-    try:
-        result = json.loads(fixed)
-        if isinstance(result, list):
-            return result
-    except json.JSONDecodeError:
-        pass
-
-    # Last resort: extract the JSON array substring
-    start = fixed.find("[")
-    end = fixed.rfind("]")
-    if start != -1 and end != -1 and end > start:
-        substr = fixed[start:end + 1]
-        # Remove trailing commas again
-        substr = re.sub(r",\s*([}\]])", r"\1", substr)
+    # Helper: clean common issues and try parse
+    def _try_parse(s: str) -> list | None:
+        # Remove trailing commas before } or ]
+        s = re.sub(r",\s*([}\]])", r"\1", s)
         try:
-            result = json.loads(substr)
+            result = json.loads(s)
             if isinstance(result, list):
                 return result
         except json.JSONDecodeError:
             pass
+        return None
+
+    # Attempt 1: parse as-is
+    result = _try_parse(text)
+    if result is not None:
+        return result
+
+    # Attempt 2: extract [...] substring
+    start = text.find("[")
+    if start != -1:
+        end = text.rfind("]")
+        if end > start:
+            result = _try_parse(text[start:end + 1])
+            if result is not None:
+                return result
+
+    # Attempt 3: handle TRUNCATED JSON (no closing ])
+    # Find the last complete JSON object "}" and close the array
+    if start != -1:
+        chunk = text[start:]
+        last_brace = chunk.rfind("}")
+        if last_brace != -1:
+            truncated = chunk[:last_brace + 1].rstrip().rstrip(",") + "\n]"
+            result = _try_parse(truncated)
+            if result is not None:
+                return result
 
     raise RuntimeError(
         f"Failed to parse Gemini response as JSON array. "
