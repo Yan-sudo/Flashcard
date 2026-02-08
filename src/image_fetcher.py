@@ -40,12 +40,18 @@ def _search_google_image(query: str) -> str | None:
     }
     try:
         resp = requests.get(url, params=params, timeout=15)
-        resp.raise_for_status()
-        items = resp.json().get("items", [])
+        data = resp.json()
+        if resp.status_code != 200:
+            err = data.get("error", {}).get("message", resp.text[:200])
+            print(f"    [CSE error] {resp.status_code}: {err}")
+            return None
+        items = data.get("items", [])
         if items:
             return items[0]["link"]
-    except Exception:
-        pass
+        else:
+            print(f"    [CSE] No image results for '{query}'")
+    except Exception as e:
+        print(f"    [CSE exception] {e}")
     return None
 
 

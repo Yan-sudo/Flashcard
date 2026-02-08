@@ -14,7 +14,6 @@ Falls back to HTML output if ReportLab is not installed.
 
 import html as html_mod
 import os
-import textwrap
 
 import src.config as config
 
@@ -43,7 +42,7 @@ def generate_pdf(words: list[dict], images: dict[str, str],
 #  ReportLab-based PDF generator
 # ===================================================================
 
-_CJK_FONT = None  # resolved at runtime
+_CJK_FONT = None
 _LATIN_FONT = "Helvetica"
 _LATIN_FONT_BOLD = "Helvetica-Bold"
 _LATIN_FONT_ITALIC = "Helvetica-Oblique"
@@ -66,17 +65,13 @@ def _setup_fonts():
     # 2) Try system TTF fonts
     from reportlab.pdfbase.ttfonts import TTFont
     ttf_candidates = [
-        # macOS
         "/System/Library/Fonts/STHeiti Light.ttc",
         "/System/Library/Fonts/PingFang.ttc",
         "/Library/Fonts/Arial Unicode.ttf",
-        # Linux
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf",
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
-        # Windows
         "C:/Windows/Fonts/msyh.ttc",
         "C:/Windows/Fonts/simsun.ttc",
     ]
@@ -89,7 +84,7 @@ def _setup_fonts():
             except Exception:
                 continue
 
-    # 3) Try to download Noto Sans SC
+    # 3) Try cached downloaded font
     font_dir = os.path.join(config.OUTPUT_DIR, ".fonts")
     cached = os.path.join(font_dir, "NotoSansSC-Regular.ttf")
     if os.path.exists(cached):
@@ -100,6 +95,7 @@ def _setup_fonts():
         except Exception:
             pass
 
+    # 4) Download Noto Sans SC
     try:
         import requests
         os.makedirs(font_dir, exist_ok=True)
@@ -116,12 +112,11 @@ def _setup_fonts():
     except Exception:
         pass
 
-    print("  [warn] No CJK font available. Chinese characters may not display.")
+    print("  [warn] No CJK font found. Chinese may not display.")
     return None
 
 
 def _font_for(text: str) -> str:
-    """Return the best font name for the given text."""
     if _CJK_FONT and any(ord(ch) > 0x2E80 for ch in text):
         return _CJK_FONT
     return _LATIN_FONT
@@ -135,18 +130,16 @@ def _make_para_text(text: str, bold_prefix: str = "") -> str:
             return f"<b>{html_mod.escape(bold_prefix)}</b>{escaped}"
         return escaped
 
-    # Wrap CJK runs in <font> tags
     parts = []
     if bold_prefix:
-        bp_escaped = html_mod.escape(bold_prefix)
-        # Check if prefix itself has CJK
+        bp = html_mod.escape(bold_prefix)
         if any(ord(ch) > 0x2E80 for ch in bold_prefix):
-            parts.append(f'<b><font name="{_CJK_FONT}">{bp_escaped}</font></b>')
+            parts.append(f'<b><font name="{_CJK_FONT}">{bp}</font></b>')
         else:
-            parts.append(f"<b>{bp_escaped}</b>")
+            parts.append(f"<b>{bp}</b>")
 
     in_cjk = False
-    buf = []
+    buf: list[str] = []
     for ch in text:
         is_cjk = ord(ch) > 0x2E80
         if is_cjk and not in_cjk:
@@ -162,29 +155,36 @@ def _make_para_text(text: str, bold_prefix: str = "") -> str:
                 buf = []
             in_cjk = False
         buf.append(ch)
-
     if buf:
         joined = html_mod.escape("".join(buf))
         if in_cjk:
             parts.append(f'<font name="{_CJK_FONT}">{joined}</font>')
         else:
             parts.append(joined)
-
     return "".join(parts)
+
+
+def _truncate(text: str, max_len: int) -> str:
+    """Truncate text to max_len characters, adding ellipsis if needed."""
+    if len(text) <= max_len:
+        return text
+    return text[:max_len - 1] + "…"
 
 
 def _draw_para(c, markup: str, x: float, y_top: float, width: float,
                font_name: str = "Helvetica", font_size: float = 11,
-               leading: float = 0, color: str = "#333333",
-               max_lines: int = 4) -> float:
-    """Draw a Paragraph on canvas. Returns height consumed."""
+               leading: float = 0, color: str = "#333333") -> float:
+    """Draw a Paragraph on canvas. Returns ACTUAL height consumed.
+
+    No artificial height cap — text is pre-truncated before calling this.
+    """
     from reportlab.platypus import Paragraph
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.enums import TA_LEFT
     from reportlab.lib.colors import HexColor
 
     if leading <= 0:
-        leading = font_size * 1.4
+        leading = font_size * 1.6
 
     style = ParagraphStyle(
         'card_text',
@@ -196,9 +196,7 @@ def _draw_para(c, markup: str, x: float, y_top: float, width: float,
         wordWrap='CJK',
     )
     p = Paragraph(markup, style)
-    avail_h = leading * max_lines + 4
-    w, h = p.wrap(width, avail_h)
-    h = min(h, avail_h)
+    w, h = p.wrap(width, 500)
     p.drawOn(c, x, y_top - h)
     return h
 
@@ -212,11 +210,11 @@ def _generate_pdf_reportlab(words: list[dict], images: dict[str, str],
 
     _setup_fonts()
 
-    page_w, page_h = letter  # 612 x 792
-    margin = 36  # 0.5 inch
+    page_w, page_h = letter
+    margin = 36
     gap = 14
     card_w = page_w - 2 * margin
-    card_h = (page_h - 2 * margin - gap) / 2  # ~351pt each
+    card_h = (page_h - 2 * margin - gap) / 2
 
     c = canvas.Canvas(output_path, pagesize=letter)
     c.setTitle("Vocabulary Flashcards — Grade 5")
@@ -225,37 +223,36 @@ def _generate_pdf_reportlab(words: list[dict], images: dict[str, str],
         slot = i % 2
         if slot == 0 and i > 0:
             c.showPage()
-
         if slot == 0:
             card_top = page_h - margin
         else:
             card_top = page_h - margin - card_h - gap
-
-        _draw_card_v2(c, w, images.get(w["word"], ""),
-                      margin, card_top, card_w, card_h)
+        _draw_card(c, w, images.get(w["word"], ""),
+                   margin, card_top, card_w, card_h)
 
     c.save()
     print(f"  PDF saved to: {output_path}")
     return output_path
 
 
-def _draw_card_v2(c, word_data: dict, image_path: str,
-                  x: float, y_top: float, card_w: float, card_h: float):
-    """Draw one flashcard with proper layout and CJK support."""
+def _draw_card(c, word_data: dict, image_path: str,
+               x: float, y_top: float, card_w: float, card_h: float):
+    """Draw one flashcard with proper layout, CJK support, no overlap."""
     from reportlab.lib.colors import HexColor
     from reportlab.lib.utils import ImageReader
 
     word = word_data["word"]
     tier = word_data.get("tier", 2)
-    chinese = word_data.get("chinese", "")
-    spanish = word_data.get("spanish", "")
-    eng_def = word_data.get("english_definition", "")
-    example = word_data.get("example_sentence", "")
+    chinese = _truncate(word_data.get("chinese", ""), 80)
+    spanish = _truncate(word_data.get("spanish", ""), 120)
+    eng_def = _truncate(word_data.get("english_definition", ""), 180)
+    example = _truncate(word_data.get("example_sentence", ""), 180)
 
     pad = 16
     inner_x = x + pad
     inner_w = card_w - 2 * pad
-    y = y_top  # current y cursor (moves down)
+    card_bottom = y_top - card_h
+    y = y_top  # cursor moves downward
 
     # ── Card background ──
     bg = HexColor("#E8F4FD") if tier == 2 else HexColor("#FFF8E1")
@@ -263,7 +260,7 @@ def _draw_card_v2(c, word_data: dict, image_path: str,
     c.setFillColor(bg)
     c.setStrokeColor(border)
     c.setLineWidth(1.5)
-    c.roundRect(x, y_top - card_h, card_w, card_h, 8, fill=1, stroke=1)
+    c.roundRect(x, card_bottom, card_w, card_h, 8, fill=1, stroke=1)
 
     # ── Image (top-right) ──
     img_w, img_h = 110, 82
@@ -275,78 +272,72 @@ def _draw_card_v2(c, word_data: dict, image_path: str,
             c.drawImage(ImageReader(image_path), img_x, img_y,
                         width=img_w, height=img_h,
                         preserveAspectRatio=True, mask='auto')
-            # Thin border around image
             c.setStrokeColor(HexColor("#CCCCCC"))
             c.setLineWidth(0.5)
             c.rect(img_x, img_y, img_w, img_h, fill=0, stroke=1)
             has_image = True
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"    [warn] Image render failed for '{word}': {e}")
 
-    # Text zone: narrower in top section (beside image), full width below
-    top_text_w = inner_w - (img_w + 12 if has_image else 0)
-    full_text_w = inner_w
+    top_text_w = inner_w - (img_w + 14 if has_image else 0)
 
     # ── Tier badge ──
     y -= pad
-    badge_w, badge_h = 52, 18
     badge_color = HexColor("#1976D2") if tier == 2 else HexColor("#F57C00")
     c.setFillColor(badge_color)
-    c.roundRect(inner_x, y - badge_h, badge_w, badge_h, 4, fill=1, stroke=0)
+    c.roundRect(inner_x, y - 18, 52, 18, 4, fill=1, stroke=0)
     c.setFillColor(HexColor("#FFFFFF"))
     c.setFont(_LATIN_FONT_BOLD, 10)
-    c.drawString(inner_x + 9, y - badge_h + 5, f"Tier {tier}")
-    y -= badge_h + 10
+    c.drawString(inner_x + 9, y - 13, f"Tier {tier}")
+    y -= 28
 
     # ── Word ──
     c.setFillColor(HexColor("#0D47A1"))
-    c.setFont(_LATIN_FONT_BOLD, 22)
-    c.drawString(inner_x, y - 20, word)
-    y -= 32
+    c.setFont(_LATIN_FONT_BOLD, 20)
+    c.drawString(inner_x, y - 16, word)
+    y -= 28
 
-    # ── Chinese line ──
+    # ── Chinese ──
     cn_label = "中文翻译: " if tier == 2 else "中文释义: "
     cn_markup = _make_para_text(chinese, bold_prefix=cn_label)
     h = _draw_para(c, cn_markup, inner_x, y, top_text_w,
                    font_name=_font_for(cn_label + chinese),
-                   font_size=11, color="#333333", max_lines=2)
-    y -= h + 6
+                   font_size=10, leading=15, color="#333333")
+    y -= h + 8
 
-    # ── Spanish line ──
+    # ── Spanish ──
     es_label = "Español: " if tier == 2 else "Definición (ES): "
     es_markup = _make_para_text(spanish, bold_prefix=es_label)
     h = _draw_para(c, es_markup, inner_x, y, top_text_w,
                    font_name=_font_for(es_label + spanish),
-                   font_size=11, color="#333333", max_lines=2)
+                   font_size=10, leading=15, color="#333333")
+    y -= h + 10
+
+    # ── Ensure we're below the image before full-width content ──
+    if has_image and y > img_y - 6:
+        y = img_y - 6
+
+    # ── English definition (full width) ──
+    def_markup = _make_para_text(eng_def, bold_prefix="Definition: ")
+    h = _draw_para(c, def_markup, inner_x, y, inner_w,
+                   font_name=_LATIN_FONT, font_size=10,
+                   leading=15, color="#333333")
     y -= h + 8
 
-    # ── From here, use full width (below image area) ──
-    # Make sure we're below the image
-    image_bottom = img_y if has_image else y
-    if y > image_bottom:
-        y = image_bottom - 4
-
-    # ── English definition ──
-    def_markup = _make_para_text(eng_def, bold_prefix="Definition: ")
-    h = _draw_para(c, def_markup, inner_x, y, full_text_w,
-                   font_name=_LATIN_FONT, font_size=11,
-                   color="#333333", max_lines=4)
-    y -= h + 6
-
-    # ── Example sentence ──
-    ex_markup = f"<i>{_make_para_text(example, bold_prefix='Example: ')}</i>"
-    _draw_para(c, ex_markup, inner_x, y, full_text_w,
-               font_name=_LATIN_FONT, font_size=10,
-               color="#666666", max_lines=3)
+    # ── Example sentence (full width) ──
+    if y > card_bottom + pad + 14:  # only draw if there's room
+        ex_markup = f"<i>{_make_para_text(example, bold_prefix='Example: ')}</i>"
+        _draw_para(c, ex_markup, inner_x, y, inner_w,
+                   font_name=_LATIN_FONT, font_size=9.5,
+                   leading=14, color="#666666")
 
 
 # ===================================================================
-#  HTML fallback (if ReportLab is unavailable)
+#  HTML fallback
 # ===================================================================
 
 def _generate_html_fallback(words: list[dict], images: dict[str, str],
                             output_path: str) -> str:
-    """Generate an HTML file with flashcards, 2 per printed page."""
     import base64
 
     cards_html = []
@@ -362,7 +353,6 @@ def _generate_html_fallback(words: list[dict], images: dict[str, str],
         cn_label = "中文翻译" if tier == 2 else "中文释义"
         es_label = "Español" if tier == 2 else "Definición (ES)"
 
-        # Embed image as base64
         img_tag = ""
         img_path = images.get(w["word"], "")
         if img_path and os.path.exists(img_path):
@@ -377,7 +367,6 @@ def _generate_html_fallback(words: list[dict], images: dict[str, str],
             except Exception:
                 pass
 
-        # Page break: after every 2 cards (i.e. before card 2, 4, 6, ...)
         page_break = ' style="page-break-before:always"' if (i > 0 and i % 2 == 0) else ''
 
         cards_html.append(f'''
@@ -412,90 +401,45 @@ def _generate_html_fallback(words: list[dict], images: dict[str, str],
   body {{
     font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont,
                  'Segoe UI', 'Microsoft YaHei', sans-serif;
-    color: #222;
-    font-size: 13px;
-    line-height: 1.45;
+    color: #222; font-size: 13px; line-height: 1.5;
   }}
-
   .card {{
-    border: 2px solid #1976D2;
-    border-radius: 10px;
-    padding: 18px 20px;
-    margin-bottom: 10px;
-    height: 48.5%;
-    overflow: hidden;
-    background: #E8F4FD;
-    display: flex;
-    flex-direction: column;
+    border: 2px solid #1976D2; border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 10px;
+    height: 48.5%; overflow: hidden;
+    background: #E8F4FD; display: flex; flex-direction: column;
   }}
-  .card.t3 {{
-    border-color: #F57C00;
-    background: #FFF8E1;
-  }}
-
-  .top-row {{
-    display: flex;
-    gap: 14px;
-    margin-bottom: 10px;
-  }}
+  .card.t3 {{ border-color: #F57C00; background: #FFF8E1; }}
+  .top-row {{ display: flex; gap: 14px; margin-bottom: 10px; }}
   .text-col {{ flex: 1; min-width: 0; }}
   .img-col {{
-    width: 130px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
+    width: 130px; flex-shrink: 0;
+    display: flex; align-items: flex-start; justify-content: center;
   }}
   .img-col img {{
-    max-width: 125px;
-    max-height: 95px;
-    border-radius: 6px;
-    border: 1px solid #bbb;
-    object-fit: contain;
-    background: #fff;
+    max-width: 125px; max-height: 95px; border-radius: 6px;
+    border: 1px solid #bbb; object-fit: contain; background: #fff;
   }}
-
   .badge {{
-    display: inline-block;
-    padding: 3px 12px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    color: #fff;
-    margin-bottom: 6px;
+    display: inline-block; padding: 3px 12px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 6px;
   }}
   .t2-badge {{ background: #1976D2; }}
   .t3-badge {{ background: #F57C00; }}
-
   .word {{
-    font-size: 24px;
-    font-weight: 700;
-    color: #0D47A1;
-    margin: 2px 0 8px;
-    line-height: 1.2;
+    font-size: 22px; font-weight: 700; color: #0D47A1;
+    margin: 2px 0 8px; line-height: 1.2;
   }}
-
-  .line {{
-    font-size: 13px;
-    margin-bottom: 5px;
-    line-height: 1.5;
-  }}
+  .line {{ font-size: 13px; margin-bottom: 6px; line-height: 1.6; }}
   .label {{ font-weight: 700; }}
   .example {{ color: #555; }}
-  .example em {{ font-style: italic; }}
-
   .bottom-section {{
     border-top: 1px solid rgba(0,0,0,0.08);
-    padding-top: 8px;
-    flex: 1;
+    padding-top: 8px; flex: 1;
   }}
-
   @media print {{
     body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
-    .card {{
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }}
+    .card {{ break-inside: avoid; page-break-inside: avoid; }}
   }}
 </style>
 </head>
