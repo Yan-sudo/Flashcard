@@ -386,9 +386,20 @@ INDEX_HTML = r"""<!DOCTYPE html>
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
       <h3>Image Search</h3>
       <p class="hint" style="margin-bottom:16px;">
-        Images are automatically fetched from <strong>Wikimedia Commons</strong> (free, no key needed).<br>
-        Optionally, you can also configure Google Custom Search for more image variety.
+        Configure at least one image source below. <strong>Pexels</strong> is recommended (free, high-quality photos, easy signup).<br>
+        Google Custom Search is also supported but requires more setup.
       </p>
+
+      <div class="form-group">
+        <label>Pexels API Key <span style="color:var(--text-muted)">(recommended, free)</span></label>
+        <input type="password" id="cfg-pexels-key" placeholder="e.g. 563492ad6f917000010000...">
+        <p class="hint">
+          Get a free key at <a href="https://www.pexels.com/api/" target="_blank">pexels.com/api</a> — sign up, then copy the API key from your dashboard. No credit card needed.
+        </p>
+      </div>
+
+      <hr style="border:none;border-top:1px dashed var(--border);margin:16px 0">
+      <p class="hint" style="margin-bottom:12px;"><em>Or use Google Custom Search (optional, more complex setup):</em></p>
 
       <div class="form-group">
         <label>Google Custom Search API Key <span style="color:var(--text-muted)">(optional)</span></label>
@@ -398,7 +409,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
         <label>Search Engine ID (cx) <span style="color:var(--text-muted)">(optional)</span></label>
         <input type="text" id="cfg-cse-cx" placeholder="e.g. a1b2c3d4e5f6g7h8i">
         <p class="hint">
-          If left blank, Wikimedia Commons will be used automatically.
+          Requires enabling the <a href="https://console.cloud.google.com/apis/library/customsearch.googleapis.com" target="_blank">Custom Search JSON API</a> in your Google Cloud project.
         </p>
       </div>
 
@@ -422,13 +433,21 @@ INDEX_HTML = r"""<!DOCTYPE html>
           <li>Copy the key and paste it in the Settings tab above</li>
         </ol>
 
-        <p><strong>Step 3: (Optional) Setup Image Search</strong></p>
+        <p><strong>Step 3: Setup Image Search (Pexels — recommended, free)</strong></p>
+        <ol style="padding-left:20px;margin:8px 0 16px">
+          <li>Go to <a href="https://www.pexels.com/api/" target="_blank">pexels.com/api</a></li>
+          <li>Click <strong>"Get Started"</strong> and sign up (free, no credit card)</li>
+          <li>After signing in, go to <strong>"Your API Key"</strong> in your dashboard</li>
+          <li>Copy the API key and paste it in Settings above</li>
+        </ol>
+
+        <p><strong>Alternative: Google Custom Search (more complex)</strong></p>
         <ol style="padding-left:20px;margin:8px 0 16px">
           <li>Go to <a href="https://programmablesearchengine.google.com/" target="_blank">Programmable Search Engine</a></li>
           <li>Create a new search engine, set "Search the entire web"</li>
           <li>Copy the <strong>Search Engine ID</strong> (cx)</li>
-          <li>Enable the Custom Search API in <a href="https://console.cloud.google.com/apis/library/customsearch.googleapis.com" target="_blank">Google Cloud Console</a></li>
-          <li>Create an API key in <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Credentials</a> (or reuse the Gemini key if same project)</li>
+          <li>Enable the <a href="https://console.cloud.google.com/apis/library/customsearch.googleapis.com" target="_blank">Custom Search JSON API</a> in Google Cloud Console (this is what causes the 403 error if missing!)</li>
+          <li>Create an API key in <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Credentials</a></li>
           <li>Paste both values in Settings above</li>
         </ol>
 
@@ -503,11 +522,13 @@ dropZone.addEventListener('drop', (e) => {
 // --- Settings ---
 function loadSettings() {
   document.getElementById('cfg-gemini-key').value = localStorage.getItem('gemini_key') || '';
+  document.getElementById('cfg-pexels-key').value = localStorage.getItem('pexels_key') || '';
   document.getElementById('cfg-cse-key').value = localStorage.getItem('cse_key') || '';
   document.getElementById('cfg-cse-cx').value = localStorage.getItem('cse_cx') || '';
 }
 function saveSettings() {
   localStorage.setItem('gemini_key', document.getElementById('cfg-gemini-key').value.trim());
+  localStorage.setItem('pexels_key', document.getElementById('cfg-pexels-key').value.trim());
   localStorage.setItem('cse_key', document.getElementById('cfg-cse-key').value.trim());
   localStorage.setItem('cse_cx', document.getElementById('cfg-cse-cx').value.trim());
   showToast('Settings saved!');
@@ -544,6 +565,7 @@ async function startGenerate() {
   const formData = new FormData();
   formData.append('pdf', pdfInput.files[0]);
   formData.append('gemini_key', geminiKey);
+  formData.append('pexels_key', localStorage.getItem('pexels_key') || '');
   formData.append('cse_key', localStorage.getItem('cse_key') || '');
   formData.append('cse_cx', localStorage.getItem('cse_cx') || '');
   formData.append('word_count', document.getElementById('word-count').value);
@@ -733,6 +755,7 @@ def api_generate():
     # Collect settings from form
     settings = {
         "gemini_key": gemini_key,
+        "pexels_key": request.form.get("pexels_key", "").strip(),
         "cse_key": request.form.get("cse_key", "").strip(),
         "cse_cx": request.form.get("cse_cx", "").strip(),
         "word_count": int(request.form.get("word_count", 30)),
@@ -822,6 +845,7 @@ def _run_job(job_id: str, pdf_path: str, settings: dict):
             GEMINI_API_KEY=settings["gemini_key"],
             GEMINI_MODEL=settings["model"],
             TARGET_WORD_COUNT=settings["word_count"],
+            PEXELS_API_KEY=settings.get("pexels_key", ""),
             GOOGLE_CSE_API_KEY=settings.get("cse_key", ""),
             GOOGLE_CSE_CX=settings.get("cse_cx", ""),
         )
