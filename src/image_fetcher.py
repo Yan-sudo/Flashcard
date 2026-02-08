@@ -163,8 +163,14 @@ def _create_placeholder(word: str, path: str):
 # Public API
 # ---------------------------------------------------------------------------
 
-def fetch_image(word: str, index: int) -> str:
-    """Fetch an image for a vocabulary word. Returns path to local image file."""
+def fetch_image(word: str, index: int, image_query: str = "") -> str:
+    """Fetch an image for a vocabulary word. Returns path to local image file.
+
+    Args:
+        word: The vocabulary word (used for filename and fallback query).
+        index: Word index (for filename ordering).
+        image_query: A concrete visual search phrase from Gemini (preferred).
+    """
     cache_dir = _get_cache_dir()
     safe_name = "".join(c if c.isalnum() else "_" for c in word)
     path = os.path.join(cache_dir, f"{index:02d}_{safe_name}.png")
@@ -172,7 +178,8 @@ def fetch_image(word: str, index: int) -> str:
     if os.path.exists(path):
         return path
 
-    query = f"{word} vocabulary"
+    # Use Gemini-generated image_query if available, otherwise fall back
+    query = image_query.strip() if image_query else f"{word} illustration"
 
     # Try Google CSE first (if configured)
     if config.GOOGLE_CSE_CX:
@@ -181,7 +188,7 @@ def fetch_image(word: str, index: int) -> str:
             return path
 
     # Try Pixabay (if API key configured)
-    url = _search_pixabay_image(word)
+    url = _search_pixabay_image(query)
     if url and _download_image(url, path):
         return path
 
@@ -195,9 +202,11 @@ def fetch_all_images(words: list[dict], on_progress=None) -> dict[str, str]:
     result = {}
     for i, w in enumerate(words):
         word = w["word"]
+        image_query = w.get("image_query", "")
         if on_progress:
-            on_progress(f"Fetching image {i + 1}/{len(words)}: {word}")
-        path = fetch_image(word, i)
+            q_display = image_query if image_query else word
+            on_progress(f"Fetching image {i + 1}/{len(words)}: {word} → \"{q_display}\"")
+        path = fetch_image(word, i, image_query=image_query)
         result[word] = path
         time.sleep(0.3)  # rate limit
     return result

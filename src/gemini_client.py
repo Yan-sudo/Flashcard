@@ -68,6 +68,7 @@ Analyze the attached PDF article and extract approximately {config.TARGET_WORD_C
 3. Spanish translation (traducción al español)
 4. English definition (clear, student-friendly)
 5. An example sentence using the word in context
+6. An image search query — a short, concrete, VISUAL phrase (2-5 words) that would find a photo illustrating this word's meaning. For abstract words, describe a concrete scene. For example: "analyze" → "scientist examining data chart", "habitat" → "animals in forest environment", "explicit" → "clear written instructions closeup".
 
 **For each Tier 3 word, provide:**
 1. The English word
@@ -75,6 +76,7 @@ Analyze the attached PDF article and extract approximately {config.TARGET_WORD_C
 3. Spanish definition — a conceptual explanation in Spanish, NOT a direct word-for-word translation. Explain the concept so a Spanish-speaking student understands the meaning in context.
 4. English definition (clear, student-friendly)
 5. An example sentence using the word in context
+6. An image search query — a short, concrete, VISUAL phrase (2-5 words) that would find a photo illustrating this concept. For example: "photosynthesis" → "plant leaves absorbing sunlight", "legislature" → "government congress chamber".
 
 Return EXACTLY a JSON array. Each element must have these fields:
 - "word": the vocabulary word (string)
@@ -83,6 +85,7 @@ Return EXACTLY a JSON array. Each element must have these fields:
 - "spanish": Spanish translation (Tier 2) or Spanish conceptual definition (Tier 3) (string)
 - "english_definition": student-friendly English definition (string)
 - "example_sentence": example sentence using the word (string)
+- "image_query": a concrete visual search phrase for finding an illustrative photo (string)
 
 Return ONLY the JSON array, no markdown fences, no extra text."""
 
